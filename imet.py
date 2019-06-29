@@ -54,7 +54,7 @@ class IMetDataset(torch.utils.data.Dataset):
         image = np.asarray(image)
         label_idxs = self.annotations_frame.iloc[idx, 1]
         label_idxs = np.array(label_idxs.split(' ')).astype(np.int)
-        labels = np.zeros((len(self.labels_frame)))  # self.labels_frame.iloc[label_idxs, 1].values
+        labels = np.zeros((len(self.labels_frame)))
         labels[label_idxs] = 1
         labels = torch.DoubleTensor(labels)
         if self.transform:
@@ -67,7 +67,7 @@ train_data = IMetDataset(root_dir='data/train', labels_csv='data/labels.csv', an
                          transform=train_data_transforms)
 
 
-train_data = IMetDataset(root_dir='data/train', labels_csv='data/labels.csv', annotations_csv='data/train.csv',
+val_data = IMetDataset(root_dir='data/train', labels_csv='data/labels.csv', annotations_csv='data/train.csv',
                          transform=val_data_transforms)
 
 test_data = IMetDataset(root_dir='data/test', labels_csv='data/labels.csv', annotations_csv='data/train.csv',
@@ -83,7 +83,7 @@ print('Using device: %s' % device)
 layer_config = [512, 512]
 num_classes = len(train_data.labels_frame)
 num_epochs = 30
-batch_size = 40
+batch_size = 10
 learning_rate = 1e-3
 learning_rate_decay = 0.99
 reg = 0  # 0.001
@@ -97,7 +97,7 @@ pretrained = True
 mask = list(range(num_training))
 train_dataset = tutils.dataset.Subset(train_data, mask)
 mask = list(range(num_training, num_training + num_validation))
-val_dataset = torch.utils.data.dataset.Subset(train_data, mask)
+val_dataset = torch.utils.data.dataset.Subset(val_data, mask)
 
 
 # -------------------------------------------------
