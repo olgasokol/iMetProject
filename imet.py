@@ -27,6 +27,7 @@ train_data_transforms = transforms.Compose([
 ])
 
 val_data_transforms = transforms.Compose([
+    torchvision.transforms.ToPILImage(),
     transforms.Resize(256),
     transforms.CenterCrop(224),
     transforms.ToTensor(),
@@ -68,7 +69,7 @@ train_data = IMetDataset(root_dir='data/train', labels_csv='data/labels.csv', an
 
 
 val_data = IMetDataset(root_dir='data/train', labels_csv='data/labels.csv', annotations_csv='data/train.csv',
-                         transform=val_data_transforms)
+                       transform=val_data_transforms)
 
 test_data = IMetDataset(root_dir='data/test', labels_csv='data/labels.csv', annotations_csv='data/train.csv',
                         transform=val_data_transforms)
@@ -80,13 +81,10 @@ print('Using device: %s' % device)
 # --------------------------------
 # Hyper-parameters
 # --------------------------------
-layer_config = [512, 512]
 num_classes = len(train_data.labels_frame)
 num_epochs = 30
-batch_size = 10
+batch_size = 40
 learning_rate = 1e-3
-learning_rate_decay = 0.99
-reg = 0  # 0.001
 dataset_size = len(train_data)
 num_training = int(dataset_size * 0.8)
 num_validation = int(dataset_size * 0.2)
@@ -207,7 +205,7 @@ def f2sdcore(out, target, beta=2.):
     score = (1+beta*beta)*p*r/(beta*beta*p + r + eps)
     return score
 
-model_ft = models.resnet18(pretrained=True)
+model_ft = models.resnet18(pretrained=pretrained)
 print("model load done")
 
 num_ftrs = model_ft.fc.in_features
@@ -219,7 +217,8 @@ print("model setup done")
 criterion = nn.MultiLabelSoftMarginLoss()
 
 # Observe that all parameters are being optimized
-optimizer_ft = optim.SGD(model_ft.parameters(), lr=learning_rate, momentum=0.9)
+# optimizer_ft = optim.SGD(model_ft.parameters(), lr=learning_rate, momentum=0.9)
+optimizer_ft = optim.Adam(model_ft.parameters(), lr=learning_rate)
 print("optimizer done")
 
 # Decay LR by a factor of 0.1 every 7 epochs
