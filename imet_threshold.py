@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as tutils
-from optim import lr_scheduler
+from torch.optim import lr_scheduler
 import numpy as np
 import torchvision
 from torchvision import datasets, models, transforms
@@ -91,7 +91,7 @@ train_data = IMetDataset(root_dir=dir_path, labels_csv=labels_path,
 num_epochs = 13
 batch_size = 20
 pretrained = True
-learning_rate = 1e-6
+learning_rate = 1e-4
 dataset_size = len(train_data)
 num_training = int(dataset_size * 0.6)
 num_validation = int(dataset_size * 0.2)
@@ -104,8 +104,8 @@ val_data = IMetDataset(root_dir=dir_path, labels_csv=labels_path,
                          annotations_csv=annotations_path,
                        transform=val_data_transforms)
 
-# device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-device = torch.device('cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cpu')
 print('Using device: %s' % device)
 
 
@@ -173,10 +173,8 @@ def train_model(model, optimizer, criterion,  scheduler, num_epochs):
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs).double()
-                    loss = criterion(outputs, labels)
-               #     loss = criterion(torch.nn.functional.log_softmax(outputs, dim=0), labels) focal
+                    loss = criterion(outputs.cpu(), labels.cpu())
                     preds = torch.nn.Softmax(outputs)
- #                   preds = torch.nn.functional.softmax(outputs)
                     preds = preds.dim > threshold
                     preds = torch.IntTensor(preds.cpu().int())
                     score = f2sdcore(preds, torch.IntTensor(labels.cpu().int()))
@@ -186,9 +184,9 @@ def train_model(model, optimizer, criterion,  scheduler, num_epochs):
                     if phase == 'train':
                         loss.backward()
                         optimizer.step()
-               # if score_num % (5000/batch_size) == 0:
-                #    print('{} Loss: {:.4f} Acc: {:.4f}'.format(
-                 #       score_num, loss, score))
+                if score_num % (5000/batch_size) == 0:
+                   print('{} Loss: {:.4f} Acc: {:.4f}'.format(
+                       score_num, loss, score))
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += score
@@ -245,43 +243,25 @@ def model_eval(model, treshold):
 
         print('Accuracy of the network on the test images: {} %'.format(score_total / total))
 
-class ConvNet(nn.Module):
-    def __init__(self, num_classes, hidden_fc_layers, pretrained):
-        super(ConvNet, self).__init__()
-        self.model = models.resnet18(pretrained=pretrained)
-        num_ftrs = self.model.fc.in_features
-        self.model.fc = nn.Linear(num_ftrs, hidden_fc_layers)
-        self.fc1 = nn.Linear(hidden_fc_layers, hidden_fc_layers)
-        self.fc2 = nn.Linear(hidden_fc_layers, num_classes)
-
-    def forward(self, x):
-        out = self.model(x)
-        out = self.fc1(out)
-        out = self.fc2(out)
-#         out = torch.flatten(x, start_dim=1)
-#         out = self.layers[-1](out)
-
-        return out
-        
-
 print("model setup done")
 
 # criterion =  nn.MultiLabelSoftMarginLoss()
 # criterion =  nn.MultiLabelSoftMarginLoss(train_data.getLabelWeights())
-criterion = FocalLoss(gamma=2)
+gamma=2
+criterion = FocalLoss.FocalLoss(gamma=gamma)
 
 threshold = 0.9
 # for i in range(0, 5):
 
-model_ft = ConvNet(num_classes, 524, pretrained)
-#model_ft = models.resnet18(pretrained=pretrained)
-#num_ftrs = model_ft.fc.in_features
-#model_ft.fc = nn.Linear(num_ftrs, num_classes)
+#model_ft = ConvNet(num_classes, 524, pretrained)
+model_ft = models.resnet18(pretrained=pretrained)
+num_ftrs = model_ft.fc.in_features
+model_ft.fc = nn.Linear(num_ftrs, num_classes)
 print("model load done")
 
 # Observe that all parameters are being optimized
-optimizer_ft = optim.SGD(model_ft.parameters(), lr=learning_rate, momentum=0.4)
-#optimizer_ft = optim.Adam(model_ft.parameters(), lr=learning_rate)
+# optimizer_ft = optim.SGD(model_ft.parameters(), lr=learning_rate, momentum=0.4)
+optimizer_ft = optim.Adam(model_ft.parameters(), lr=learning_rate)
 print("optimizer done")
 
 # Decay LR by a factor of 0.1 every 7 epochs
@@ -299,4 +279,4 @@ print("training with threshold {}".format(threshold))
 model_ft = train_model(model_ft, optimizer_ft, criterion, exp_lr_scheduler, num_epochs=num_epochs)
 model_eval(model_ft,threshold )
 print("train done")
-torch.save(model_ft, './resnet18_tr__'+str(threshold))
+torch.save(model_ft, './resnet18_tr__'+str(threshold)+"_focal_"+str(gamma))
