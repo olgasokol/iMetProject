@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 import copy
+import random
 import pandas as pd
 # from focal_loss_pytorch.focalloss import FocalLoss
 from pytorch_workplace.focalloss import loss as FocalLoss
@@ -62,26 +63,12 @@ class IMetDataset(torch.utils.data.Dataset):
         image = np.asarray(image)
         label_idxs = self.annotations_frame.iloc[idx, 1]
         label_idxs = np.array(label_idxs.split(' ')).astype(np.int)
-        label_idx=0
-        #label_idx = np.random.choice(label_idxs)
-        #for label_idx in label_idxs:
-        #    embeddings.append(label_embeddings[label_idx])
-        #embeddings = label_embeddings[label_idx]
-        #embeddings = np.average([label_embeddings[li] for li in label_idxs], weights=[self.label_weights[li] for li in label_idxs], axis=0)
-        embeddings = label_embeddings[label_idxs[label_idx]]
-        #embeddings = np.average([label_embeddings[li] for li in label_idxs], axis=0)
-        embeddings = torch.DoubleTensor(embeddings)
         labels = np.zeros((len(self.labels_frame)))
         labels[label_idxs] = 1
-        #labels = torch.LongTensor(labels)
         labels = torch.DoubleTensor(labels)
-        #labels = torch.ByteTensor(labels)
         if self.transform:
             image = self.transform(image)
-        #image_stacked = image.unsqueeze(0).expand([len(label_idxs)]+list(image.size()))
-        #labels_stacked = labels.unsqueeze(0).expand([len(label_idxs)]+list(labels.size()))
-        #print(image_stacked.shape, labels_stacked.shape, embeddings.shape)
-        return image, labels, embeddings
+        return image, labels
     
     def getLabelWeights(self):
         print("getLabelWeights")
@@ -100,9 +87,9 @@ class IMetDataset(torch.utils.data.Dataset):
         labels = np.zeros((len(self.labels_frame)))
         labels[v]=1
         return labels
-
+    
 class LabelEmbeddings:
-    def __init__(self, labels_path, annotations_path):  
+    def __init__(self, labels_path, annotations_path, load_path=""):  
         self.labels_to_ix = {}
         self.ix_to_label = {}
 
@@ -126,10 +113,17 @@ class LabelEmbeddings:
                     for j in range(i+1, len(labels)):
                         words_context.append((self.ix_to_label[labels[i]], self.ix_to_label[labels[j]]))
 
-        self.label_embeddings = Word2Vec(min_count=1)
-        self.label_embeddings.build_vocab(words_context)  # prepare the model vocabulary
-        self.label_embeddings.train(words_context, total_examples=self.label_embeddings.corpus_count, 
-                                    epochs=self.label_embeddings.iter)  # train word vectors
+        if load_path == "":
+            self.label_embeddings = Word2Vec(min_count=1)
+            self.label_embeddings.build_vocab(words_context)  # prepare the model vocabulary
+            self.label_embeddings.train(words_context, total_examples=self.label_embeddings.corpus_count, 
+                                        epochs=self.label_embeddings.iter)  # train word vectors
+        else:
+            self.label_embeddings = Word2Vec.load(load_path)
+        self.label_embeddings.init_sims()
+    
+    def save(self, path):
+        self.label_embeddings.save(path)
     
     def __getitem__(self, idx):
         return self.label_embeddings.wv.word_vec(self.ix_to_label[idx], use_norm=True)
@@ -149,8 +143,7 @@ dir_path = os.path.join(data_dir, 'train')
 labels_path = os.path.join(data_dir, 'labels.csv')
 annotations_path = os.path.join(data_dir, 'train_.csv')
 
-label_embeddings = LabelEmbeddings(labels_path, annotations_path)
-print(label_embeddings.most_similar('culture::china'))
+label_embeddings = LabelEmbeddings(labels_path, annotations_path, load_path=os.path.join(data_dir, 'label2v.model'))
 print("labels done")
 
 train_data = IMetDataset(root_dir=dir_path, labels_csv=labels_path,
@@ -158,8 +151,9 @@ train_data = IMetDataset(root_dir=dir_path, labels_csv=labels_path,
                          transform=train_data_transforms)
 
 
-num_epochs = 12
+num_epochs = 40
 batch_size = 20
+cosine_padded_len = 15
 pretrained = True
 learning_rate = 0.01
 dataset_size = len(train_data)
@@ -258,11 +252,34 @@ class ImageEmbeddingClassifierDistance(nn.Module):
         self.combine_classifiers(torch.stack([classification, distance],dim=2))
         return classification, img_embedding
 
+
+def onehot2vectors(onehot, label_embeddings, padded_len=15):
+    embedding_dim = label_embeddings.dim()
+    res = np.zeros((onehot.shape[0], padded_len, embedding_dim,))
+    y = np.ones((onehot.shape[0], padded_len))
+    for i in range(onehot.shape[0]):
+        labels = torch.nonzero(onehot[i]).flatten().cpu().detach().tolist()
+        j=0
+        for l in labels:
+            res[i][j] = label_embeddings[l]
+            j+=1
+        while j < padded_len:
+            l = random.randint(0,1102)
+            while l in labels:
+                l = random.randint(0,1102)
+            res[i][j] = label_embeddings[l]
+            y[i, j]=-1
+            j+=1
+            
+    return torch.tensor(res, dtype=torch.double, device=device, requires_grad=False), torch.tensor(y, dtype=torch.double, device=device, requires_grad=False)
+    
+    
 def train_model(model, optimizer, criterion_embeddings, criterion_classification,  scheduler, num_epochs):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
     best_acc = 0.0
+    best_loss = 999.0
 
     for epoch_i in range(num_epochs):
         print('Epoch {}/{}'.format(epoch_i, num_epochs - 1))
@@ -280,12 +297,13 @@ def train_model(model, optimizer, criterion_embeddings, criterion_classification
             running_loss_classification = 0.0
             running_corrects = 0
             score_num = 0.
+            
 
             # Iterate over data.
-            for inputs, labels, embeddings in loader[phase]:
+            for inputs, labels in loader[phase]:
                 inputs = inputs.cuda()
                 labels = labels.cuda()
-                embeddings = embeddings.cuda()
+                embeddings, y = onehot2vectors(labels, label_embeddings, padded_len=cosine_padded_len)
 
                 # zero the parameter gradients
                 optimizer.zero_grad()
@@ -293,10 +311,11 @@ def train_model(model, optimizer, criterion_embeddings, criterion_classification
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    #out = model(inputs)
-                    #print(len(out))
                     output_classes, output_embedding = model(inputs)
-                    loss_embedding = criterion_embeddings(output_embedding.double(), embeddings, torch.ones(output_embedding.shape[0], device=device, dtype=torch.double))
+                    output_embeddings = output_embedding.double().unsqueeze(1).repeat(1, cosine_padded_len, 1)
+                    #print(output_embeddings.shape, embeddings.shape)
+                    loss_embedding = criterion_embeddings(output_embeddings.view(-1, 100), embeddings.view(-1, 100), y.view(-1))
+                    
                     #loss_embedding = criterion_embeddings(output_embedding.double(), embeddings)
                     loss_classifier = criterion_classification(output_classes.double(), labels)
                     preds = torch.sigmoid(output_classes)
@@ -325,12 +344,12 @@ def train_model(model, optimizer, criterion_embeddings, criterion_classification
             print('{} Loss embedding: {:.4f}, Loss classification: {:.4f}, Acc: {:.4f}'.format(
                 phase, epoch_loss_embedding, epoch_loss_classification, epoch_acc))
 
-            torch.save(model, os.path.join(data_dir, './resnet18_embeddings_normalized'))
             # deep copy the model
-            if phase == 'val' and epoch_acc > best_acc:
+            if phase == 'val' and epoch_loss_embedding < best_loss:#epoch_acc > best_acc:
+                best_loss = epoch_loss_embedding
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
-                #torch.save(model, './resnet18_embeddings_{}_acc_{:.4f}'.format(epoch_i, epoch_acc.item()))
+                torch.save(model, os.path.join(data_dir, './resnet18_embeddings_with_classification_epoch_{}_loss_{:.4f}'.format(epoch_i, best_loss)))
                 print('model saved')
 
     time_elapsed = time.time() - since
@@ -357,7 +376,7 @@ def model_eval(model, treshold):
     with torch.no_grad():
         score_total = 0
         total = 0
-        for images, labels, embeddings in test_loader:
+        for images, labels in test_loader:
             images = images.to(device)
             labels = labels.to(device)
             outputs, _ = model(images)
@@ -389,15 +408,16 @@ threshold = 0.5
 # for i in range(0, 5):
 
 #model_ft = ConvNet(num_classes, 524, pretrained)
-model_ft = torch.load(os.path.join(data_dir, 'resnet18_tr__0.9_focal_gamma2'))
-model = ImageEmbeddingClassifier(model_ft, num_classes)
+#model_ft = torch.load(os.path.join(data_dir, 'resnet18_tr__0.9_focal_gamma2'))
+#model = ImageEmbeddingClassifier(model_ft, num_classes)
+model = torch.load(os.path.join(data_dir, 'resnet18_embeddings'))
 print("model load done")
 
 
 # Observe that all parameters are being optimized
 # optimizer_ft = optim.SGD(model_ft.parameters(), lr=learning_rate, momentum=0.4)
-optimizer_ft = optim.Adam(model.parameters(), lr=learning_rate)
-#optimizer_ft = optim.Adam(model.parameters())
+#optimizer_ft = optim.Adam(model.parameters(), lr=learning_rate)
+optimizer_ft = optim.Adam(model.parameters())
 print("optimizer done")
 
 # Decay LR by a factor of 0.1 every 7 epochs
@@ -416,4 +436,4 @@ print("training with threshold {}".format(threshold))
 model_ft = train_model(model, optimizer_ft, criterion_embeddings, criterion_classification, exp_lr_scheduler, num_epochs=num_epochs)
 model_eval(model,threshold )
 print("train done")
-torch.save(model, os.path.join(data_dir, './resnet18_embeddings_normalized'))
+torch.save(model, os.path.join(data_dir, './resnet18_embeddings_with_classification'))
