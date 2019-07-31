@@ -31,7 +31,7 @@
 \author{Ekaterina Arkhangelskaia, Olha Sokol\\
 Universit{\"a}t des Saarlandes\\
 Saarbr{\"u}cken, Germany\\
-{\tt\small s8ekarkh,s8olsoko @stud.uni-saarland.de }
+{\tt\small \{s8ekarkh,s8olsoko\}@stud.uni-saarland.de }
 }
 
 \maketitle
@@ -74,9 +74,18 @@ As we can see from Fig. \ref{fig:top30}, labels for this dataset are very unbala
 \subsection{Related work}
 
 There's been a lot of work in classification paintings by author, learning their artistic style  \cite{paint_class}, \cite{rec_style}, \cite{learned_style}, \cite{draw_style}, \cite{la_style}, \cite{la_style_2}, and style transfer \cite{johnson_style_transf}, \cite{huang_style_transf}, \cite{ulyaniv_stylized_img}, \cite{jie_style_transf}. However, little has been made in classification of art pieces that are not paintings. 
+
 T. Balakrishan et al. in \cite{Rijks} tried to classify paintings of Rijksmuseum by their respective authors. To adress imbalance problem they reduces their authors set to include only top 10 artist regarding amount of paintings they produced. Then they used pretrained ResNet-18 and fine-tuned its last layer. However with such architercture they encountered accuracy drop by 0.3\% when increasing number of classes from 10 to 20.
 
+M. Sabatelli et al. in \cite{deep_cnn_class} try to solve different classification problems on datasets similar to ours. Thy try to classify heritage art pieces from Rijksmuseum and Antwerp datasets according to their author, art style and material. To tackle this problem they use 4 architectures: VGG19 \cite{vgg}, Inception-V3 \cite{inc-v3}, Xception \cite{xception} and ResNet50 \cite{resnet50}. All of mentioned neural nets are fine-tuned with SGD in conjunction with early stopping mechanism. Categorical crossentropy loss function was used for all 3 multi-class classification problem. They also confirm idea that art features learned on Rijksmuseum dataset can be transferred on Antwerp dataset. 
 
+Akata et al. in \cite{akata_emb} argue that attribute based image classification can be viewed as label-embedding problem. In their setup each class is embedded in the space of attribute vectors and function to optimizen is defined as 
+$$f(x,w)=\underset{y \in Y}{\mathrm{argmax }}\ F(x,y;w)$$
+where $w$ is model parameters and $F(x,y;w)$ measures how compatible is pair $(x,y)$ giwen $w$. They also assume that $F$ is linear in some joint feature embedding $\psi(x,y)$:
+$$ F(x,y;w)=w'\psi(x,y)$$
+and embedding $\psi$ can be rewritten as tensor product of image features $\theta : \mathcal{X} \rightarrow \widetilde{\mathcal{X}} = \mathbb{R}^D$ and label embedding $\varphi : \mathcal{Y} \rightarrow \widetilde{\mathcal{Y}} = \mathbb{R}^E$:
+$$\psi(x,y)=\theta(x)\oplus \varphi(y). $$
+To optimize $f(x,w)$ directly image classification and not only compatibility between input and output embeddings authors adapt WSABIE algorithm \cite{wsabie}. This setup proves to overcome 3 common problems existing in attribute learning. First, as mentioned before, they don't introduce intermediate problem of learning attribute classification. Then, they use training data to update label embedding by using as prior attribute embedding. Futhermore, their method can utilize other sources of additional information such as word embeddings derived from text or class hierarchies.
 %-------------------------------------------------------------------------
 
 {\small
@@ -86,8 +95,18 @@ T. Balakrishan et al. in \cite{Rijks} tried to classify paintings of Rijksmuseum
 
 \bibitem{Rijks} 
 Tara Balakrishan, Sarah Rosston, Emily Tang
-\textit{Using CNN to Classify and Understand Artists from the Rijksmuseum}. 
-2017.
+\textit{Using CNN to Classify and Understand Artists from the Rijksmuseum}.
+2017. Available at: \texttt{http://cs231n.stanford.edu/reports/2017/ pdfs/410.pdf}
+
+\bibitem{deep_cnn_class} 
+Matthia Sabatelli, Mike Kestemont, Walter Daelemans, Pierre Geurts
+\textit{Deep Transfer Learning for Art Classification Problems}.
+ECCV VisArt Workshop on Computer Vision for Art Analysis (September 2018, Munich GE).
+
+\bibitem{akata_emb}
+Zeynep Akata, Florent Perronnin, Zaid Harchaoui, Cordelia Schmid. 
+\textit{Label-Embedding for Image Classification}
+arXiv preprint arXiv:1503.08677 [cs.CV]
 
 \bibitem{imet} 
 
@@ -149,8 +168,30 @@ Jie An, Haoyi Xiong, Jiebo Luo, Jun Huan, Jinwen Ma.
 \textit{Fast Universal Style Transfer for Artistic and Photorealistic Rendering}
 arXiv preprint arXiv:1907.03118v1, 2019
 
+\bibitem{vgg}
+Simonyan, K., Zisserman, A.
+\textit{Very deep convolutional networks for large-scale image recognition.}
+arXiv preprint arXiv:1409.1556 (2014)
 
+\bibitem{inc-v3}
+Szegedy, C., Vanhoucke, V., Ioffe, S., Shlens, J., Wojna, Z.
+\textit{Rethinking the inception architecture for computer vision.}
+In: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition. pp. 2818–2826 (2016)
 
+\bibitem{resnet50}
+Xie, S., Girshick, R., Dollár, P., Tu, Z., He, K.
+\textit{Aggregated residual transformations for deep neural networks.}
+In: Computer Vision and Pattern Recognition (CVPR), 2017 IEEE Conference on. pp. 5987–5995. IEEE (2017)
+
+\bibitem{xception}
+Chollet, F.
+\textit{Xception: Deep learning with depthwise separable convolutions.}
+arXiv preprint (2016)
+
+\bibitem{wsabie}
+J. Weston, S. Bengio, and N. Usunier. 
+\textit{Large scale image annotation: Learning to rank with joint word-image embeddings.}
+ECML, 2010.
 \end{thebibliography}
 }
 
