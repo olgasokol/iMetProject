@@ -14,6 +14,8 @@ import pandas as pd
 # from focal_loss_pytorch.focalloss import FocalLoss
 from pytorch_workplace.focalloss import loss as FocalLoss
 from skimage import io
+from gensim.test.utils import common_texts, get_tmpfile
+from gensim.models import Word2Vec
 
 torch.manual_seed(0)
 torch.backends.cudnn.deterministic = True
@@ -57,8 +59,8 @@ class IMetDataset(torch.utils.data.Dataset):
         labels = np.zeros((len(self.labels_frame)))
         labels[label_idxs] = 1
         #labels = torch.LongTensor(labels)
-        #labels = torch.DoubleTensor(labels)
-        labels = torch.ByteTensor(labels)
+        labels = torch.DoubleTensor(labels)
+        #labels = torch.ByteTensor(labels)
         if self.transform:
             image = self.transform(image)
         return image, labels
@@ -91,6 +93,29 @@ print(dir_path, labels_path, annotations_path)
 train_data = IMetDataset(root_dir=dir_path, labels_csv=labels_path, 
                          annotations_csv=annotations_path, transform=train_data_transforms)
 
+labels_to_ix = {}
+ix_to_label = {}
+
+with open(labels_path) as labels_f:
+    lines = labels_f.readlines()
+    for l in lines[1:]:
+        idx, label = l.strip().split(',')
+        labels_to_ix[label] = int(idx)
+        ix_to_label[int(idx)] = label
+
+vocab = set(labels_to_ix.keys())
+vocab_size = len(vocab)
+
+words_context = [] 
+with open(annotations_path) as labels_f:
+    lines = labels_f.readlines()
+    for line in lines[1:]:
+        labels = line.strip().split(',')[1].split()
+        labels = [int(l) for l in labels]
+        for i in range(len(labels)):
+            for j in range(i+1, len(labels)):
+                words_context.append((ix_to_label[labels[i]], ix_to_label[labels[j]]))
+                
 num_epochs = 13
 batch_size = 20
 pretrained = True
@@ -176,19 +201,19 @@ def train_model(model, optimizer, criterion,  scheduler, num_epochs):
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    outputs = model(inputs).double()
-                    loss = criterion(outputs, labels)
-                    preds = torch.nn.Softmax(outputs)
-                    preds = preds.dim > threshold
-                    preds = preds.int()
-                    score = f2sdcore(preds, labels.int())
+                    outputs = model(inputs)
+                    loss = criterion(outputs.double(), labels)
+                    preds = torch.sigmoid(outputs)
+                    preds = preds > threshold
+                    #preds = preds.int()
+                    score = f2score(preds.int(), labels.int())
                     score_num = score_num + 1
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
                         loss.backward()
                         optimizer.step()
-                if score_num % (1000/batch_size) == 0:
+                if score_num % (5000/batch_size) == 0:
                     print('{} Loss: {:.4f} Acc: {:.4f}'.format(
                        score_num, loss, score))
                 # statistics
@@ -205,6 +230,8 @@ def train_model(model, optimizer, criterion,  scheduler, num_epochs):
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
+                torch.save(model, './resnet18_softmargin_'+str(epoch_i)+'_acc'+str(epoch_acc.item()))
+                print('model saved')
 
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
@@ -215,12 +242,12 @@ def train_model(model, optimizer, criterion,  scheduler, num_epochs):
     model.load_state_dict(best_model_wts)
     return model
 
-def f2sdcore(out, target, beta=2.):
+def f2score(out, target, beta=2.):
     eps = 0.0001
     #out - binary results
     tp = torch.sum(out * target).double()
-    fp = torch.sum((out | target - target) * out).double()
-    fn = torch.sum((out | target - target) * target).double()
+    fp = torch.sum(out * (1-target)).double()
+    fn = torch.sum((1-out)*target).double()
     p = tp / (tp+fp + eps)
     r = tp / (tp + fn + eps)
     score = (1+beta*beta)*p*r/(beta*beta*p + r + eps)
@@ -235,11 +262,10 @@ def model_eval(model, treshold):
             images = images.to(device)
             labels = labels.to(device)
             outputs = model(images)
-            preds = torch.nn.Softmax(outputs)
-            preds = preds.dim > treshold
-            preds = torch.IntTensor(preds.cpu().int())
+            preds = torch.sigmoid(outputs)
+            preds = preds > threshold
 
-            score = f2sdcore(preds, torch.IntTensor(labels.cpu().int()))
+            score = f2score(out=preds.int(), target=labels.int())
             total += 1
             score_total += score
     #         if total == 1000:
@@ -249,18 +275,23 @@ def model_eval(model, treshold):
 
 print("model setup done")
 
-# criterion =  nn.MultiLabelSoftMarginLoss()
-# criterion =  nn.MultiLabelSoftMarginLoss(train_data.getLabelWeights())
-gamma=2
-criterion = FocalLoss.FocalLoss(gamma=gamma)
+weighted_classes = True
+print("using weighted classification {}".format(weighted_classes))
 
-threshold = 0.9
+criterion =  nn.BCEWithLogitsLoss()
+if weighted_classes:
+    criterion =  nn.MultiLabelSoftMarginLoss(train_data.getLabelWeights())
+gamma=2
+#criterion = FocalLoss.FocalLoss(gamma=gamma)
+
+threshold = 0.5
 # for i in range(0, 5):
 
 #model_ft = ConvNet(num_classes, 524, pretrained)
 model_ft = models.resnet18(pretrained=pretrained)
 num_ftrs = model_ft.fc.in_features
 model_ft.fc = nn.Linear(num_ftrs, num_classes)
+model_ft = torch.load(os.path.join("./", "resnet18_tr__0.9_focal_gamma2"))
 print("model load done")
 
 # Observe that all parameters are being optimized
@@ -271,6 +302,12 @@ print("optimizer done")
 # Decay LR by a factor of 0.1 every 7 epochs
 exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.5)
 print("lr done")
+
+label_embeddings = Word2Vec(min_count=1)
+label_embeddings.build_vocab(words_context)  # prepare the model vocabulary
+label_embeddings.train(words_context, total_examples=label_embeddings.corpus_count, epochs=label_embeddings.iter)  # train word vectors
+
+print("labels done")
 
 # for param in model_ft.parameters():
 #     param.requires_grad = False
@@ -283,4 +320,4 @@ print("training with threshold {}".format(threshold))
 model_ft = train_model(model_ft, optimizer_ft, criterion, exp_lr_scheduler, num_epochs=num_epochs)
 model_eval(model_ft,threshold )
 print("train done")
-torch.save(model_ft, './resnet18_tr__'+str(threshold)+"_focal_"+str(gamma))
+torch.save(model_ft, './resnet18_softmargin')
