@@ -8,6 +8,15 @@
 \usepackage{amssymb}
 \usepackage{graphicx}
 \graphicspath{{./images/}}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{placeins}
+\usepackage{dblfloatfix}   
+\usepackage{multicol}
+\usepackage{caption}
 % Include other packages here, before hyperref.
 
 % If you comment hyperref and then uncomment it, you should delete
@@ -46,7 +55,7 @@ Saarbr{\"u}cken, Germany\\
 
 %%%%%%%%% BODY TEXT
 \section{Introduction}
-Art has always been a part of human's life. There are more than 55000 museums in the world, and due to rapid digitilizing of the world a lot of people such as researchers or other scholars would benefit from ability to quickly  navigate among all the data they contain. However, it can be time consuming and inefficient to label all the data by hand. This task motivates us to build end-to-end system to provide automatic labels for sparce and semantically different artistic data. We believe that describing finer-grained attributes from the museum-goer’s understanding, adding fine-grained attributes to aid in the visual understanding of the museum objects will enable the ability to search for visually related objects.
+Art has always been a part of human's life. There are more than 55000 museums in the world, and due to rapid digitilizing of the world a lot of people such as researchers or other scholars would benefit from ability to quickly  navigate among all the data they contain. However, it can be time consuming and inefficient to label all the data by hand. This task motivates us to build end-to-end system to provide automatic labels for sparce and semantically different artistic data. We believe that describing finer-grained attributes from the museum-goer’s understanding, adding fine-grained attributes to aid in the visual understanding of the museum objects will enable the ability to search for visually related objects. 
 
 \subsection{Dataset}
 %\includegraphics[width=\textwidth]{banner_imet}
@@ -103,20 +112,20 @@ We propose a new method for imporovement of fine-grained multi-label classificat
 	\item retraining of the convolutional network classifier on the final labels
 \end{enumerate}
 \par First, we use Word2Vec to project the labels into a lower-dimensional space. We define the contexts of the labels as all labels that co-occur with them in the dataset and train the embedding model to obtain the vectors for the labels at the first stage of training our classifier.
-\par These vectors are then used as target values for a convolutional network based on ResNet\cite{he2015deep}. That is, we replace the last fully convolutional layer of the standard ResNet with two fully convolutional layers that are used to predict an embedding of the image's label vectors.
+\par These vectors are then used as target values for a convolutional network based on ResNet \cite{he2015deep}. That is, we replace the last fully convolutional layer of the standard ResNet with two fully convolutional layers that are used to predict an embedding of the image's label vectors.
 \par The mapping from the ResNet image features to label vectors is performed with cosine similarity loss. It is more suitable then mean squared error because the length of the embedding vector is limited (additionally, we use normalized embedding vetctors) and we mostly want to take the direction, but not the scale of the embedding into account. Additionally, we sample labels that do not belong to the given image and use the cosine similarity loss to increase idstance to their vectors.
 
 \begin{align*}
 loss(x_{img}, x_{label}) =
 \begin{cases}
-1-cos(x_{img}, x_{label}), \\ \text{\qquad if $x_{label}$ is a vector of some label of } \\ \text{ \qquad the image with features $x_{img}$}\\
+1-cos(x_{img}, x_{label}), \\ \text{\qquad if $x_{label}$ is a vector of some label  } \\ \text{ \qquad of the image with features $x_{img}$}\\
 max(0, cos(x_{img}, x_{label})) \text{ otherwise}
 \end{cases}
 \end{align*}
 \par We then use the resulting image embedding vector as an additional input for the classifier in two settings:
 \begin{enumerate}
-	\item first model (A)(\cite{fig:arch}, left) feeds the resulting embedding concatenated with ResNet features directly to the classifier
-	\item second model (B)(\cite{fig:arch}, right) computes cosine similarity between image embedding and vector of every existing label and then passes these distances along with the ResNet image features to the classifier
+	\item first model (A)(Fig. \ref{fig:arch}, left) feeds the resulting embedding concatenated with ResNet features directly to the classifier
+	\item second model (B)(Fig. \ref{fig:arch}, right) computes cosine similarity between image embedding and vector of every existing label and then passes these distances along with the ResNet image features to the classifier
 \end{enumerate}
 \par We use binary cross entropy loss for the classifier. Additionallly, we have experimented with using class weights reciprocate to the class frequency and focal loss \cite{lin2017focal} to combat class sparcity and imbalance.
 
@@ -248,6 +257,24 @@ tag::firearms, 0.20}
 You can see from the training statistics on the figures\label{fig:stat1}, \label{fig:stat2} accuracy is not a very useful measure in this task, it stays close to 1 from the start of the training because most of the examples are negative for most classes. This is why we evaluate our models with F2-score.
 \par We have also experimented with combining the last two stages, but it didn't give satisfactory results, probably because training in this setting requires more subltle hyperparametrs tuning to adjust the contribution of both classification and embedding loss.
 \par Training of all models took approx 5 hours each on a single Tesla P100 GPU.
+
+\subsection{Visualization}
+To provide better understanding of extracted features in final layers of our model, we use t-SNE \cite{tsne} dimentionality reduction technic. It is particularly well suited for the visualization of high-dimensional datasets, which is why we consider it suitable for our case. 
+We forward a batch of images through a model and extract tensor of features of second embedding. Using t-SNE, we reduce this 100-dimentional tensor to 2-D space to plot corresponding image on a grid.
+On Fig. \ref{fig:tsne} you can see that neighbouring images actually look somewhat connected, even though they don't have clear visual resembelling.
+
+\begin{figure}[hb!]
+	\begin{center}
+		\begin{tabular}{|c|c|c|c|}
+			\hline
+\includegraphics[width=0.3\textwidth]{tsne1} &	\includegraphics[width=0.25\textwidth]{tsne2} & \includegraphics[width=0.25\textwidth]{tsne3} & \includegraphics[width=0.2\textwidth]{tsne4} \\
+			\hline
+	\end{tabular}
+	\end{center}
+	\caption{Examples of clustered images in feature space}
+	\label{fig:tsne}
+\end{figure}
+
 \subsection{Evaluation}
     \begin{minipage}[b]{0.5\hsize}\centering
     	\begin{tabular}{|m{1cm}|cccc|}
@@ -284,7 +311,6 @@ Source code is available at https://github.com/olgasokol/iMetProject
 
 {\small
 \bibliographystyle{ieee_fullname}
-\bibliography{egbib}
 \begin{thebibliography}{9}
 
 \bibitem{Rijks} 
@@ -386,7 +412,32 @@ arXiv preprint (2016)
 J. Weston, S. Bengio, and N. Usunier. 
 \textit{Large scale image annotation: Learning to rank with joint word-image embeddings.}
 ECML, 2010.
+
+
+\bibitem{mikolov2013efficient}
+Mikolov, Tomas and Chen, Kai and Corrado, Greg and Dean, Jeffrey.
+\textit{Large scale image annotation: Learning to rank with joint word-image embeddings.}
+arXiv preprint arXiv:1301.3781, 2013
+
+
+\bibitem{he2015deep}
+He, K and Zhang, X and Ren, S and Sun, J.
+\textit{Deep residual learning for image recognition. Computer Vision and Pattern Recognition (CVPR).}
+2016 IEEE Conference, vol. 5, p6 
+
+
+\bibitem{lin2017focal}
+Lin, Tsung-Yi and Goyal, Priya and Girshick, Ross and He, Kaiming and Doll{\'a}r, Piotr.
+\textit{Focal loss for dense object detection.}
+Proceedings of the IEEE international conference on computer vision, 2017, pp. 2980-2988
+
+\bibitem{tsne}
+L.J.P. van der Maaten.
+\textit{Accelerating t-SNE using Tree-Based Algorithms.}
+Journal of Machine Learning Research 15(Oct):3221-3245, 2014.
 \end{thebibliography}
+
+\bibliography{egbib}
 }
 
 \end{document}
