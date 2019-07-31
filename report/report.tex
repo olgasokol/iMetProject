@@ -22,7 +22,7 @@
 
 % Pages are numbered in submission mode, and unnumbered in camera-ready
 %\ifcvprfinal\pagestyle{empty}\fi
-\setcounter{page}{1}
+
 \begin{document}
 
 %%%%%%%%% TITLE
@@ -87,6 +87,200 @@ and embedding $\psi$ can be rewritten as tensor product of image features $\thet
 $$\psi(x,y)=\theta(x)\oplus \varphi(y). $$
 To optimize $f(x,w)$ directly image classification and not only compatibility between input and output embeddings authors adapt WSABIE algorithm \cite{wsabie}. This setup proves to overcome 3 common problems existing in attribute learning. First, as mentioned before, they don't introduce intermediate problem of learning attribute classification. Then, they use training data to update label embedding by using as prior attribute embedding. Futhermore, their method can utilize other sources of additional information such as word embeddings derived from text or class hierarchies.
 %-------------------------------------------------------------------------
+
+\begin{figure*}[!ht]
+	\includegraphics[width=\textwidth]{screenshot001.jpg}
+	\centering
+	\caption{Schemes of the two proposed network architectures}\label{fig:arch}
+\end{figure*}
+\section{Proposed method}
+We propose a new method for imporovement of fine-grained multi-label classification tasks. Our suggestion is that by augmenting pure classification model with additional information about labels, obtained by unsuperwised learning, we would be able to improve classification results.
+\par The intuition behind our method can be described as an attempt to smooth out the loss function of the multi-label classifier. That is, in the pure classifier setting the classification is regarded equally incorrect whether the predicted labels were semantically close to the ground thruth or not, as long as they are not an exact match of the true label. This makes training on the big number of labels challenging, especially since the labels in the original dataset have a wide variety of aspects they are describing and can be arbitrarily close or far in meaning across the dataset from the human standpoint. Out hypothesis is that by embedding labels into a continuous space in a way the puts classes that are close semantically close in that space and then using these vectors as an additional information for the model the learning curve of the model should be made less steep and the learning process more robust (by avoiding some local minima).
+\par Our training method can be described in three stages:
+\begin{enumerate}
+	\item training of the Word2Vec \cite{mikolov2013efficient} model on the labels
+	\item fine-tuning pretrained convolutional network on the label vectors (image-label embeddings)
+	\item retraining of the convolutional network classifier on the final labels
+\end{enumerate}
+\par First, we use Word2Vec to project the labels into a lower-dimensional space. We define the contexts of the labels as all labels that co-occur with them in the dataset and train the embedding model to obtain the vectors for the labels at the first stage of training our classifier.
+\par These vectors are then used as target values for a convolutional network based on ResNet\cite{he2015deep}. That is, we replace the last fully convolutional layer of the standard ResNet with two fully convolutional layers that are used to predict an embedding of the image's label vectors.
+\par The mapping from the ResNet image features to label vectors is performed with cosine similarity loss. It is more suitable then mean squared error because the length of the embedding vector is limited (additionally, we use normalized embedding vetctors) and we mostly want to take the direction, but not the scale of the embedding into account. Additionally, we sample labels that do not belong to the given image and use the cosine similarity loss to increase idstance to their vectors.
+
+\begin{align*}
+loss(x_{img}, x_{label}) =
+\begin{cases}
+1-cos(x_{img}, x_{label}), \\ \text{\qquad if $x_{label}$ is a vector of some label of } \\ \text{ \qquad the image with features $x_{img}$}\\
+max(0, cos(x_{img}, x_{label})) \text{ otherwise}
+\end{cases}
+\end{align*}
+\par We then use the resulting image embedding vector as an additional input for the classifier in two settings:
+\begin{enumerate}
+	\item first model (A)(\cite{fig:arch}, left) feeds the resulting embedding concatenated with ResNet features directly to the classifier
+	\item second model (B)(\cite{fig:arch}, right) computes cosine similarity between image embedding and vector of every existing label and then passes these distances along with the ResNet image features to the classifier
+\end{enumerate}
+\par We use binary cross entropy loss for the classifier. Additionallly, we have experimented with using class weights reciprocate to the class frequency and focal loss \cite{lin2017focal} to combat class sparcity and imbalance.
+
+\section{Experimental results}
+\subsection{Label embedding examples}
+While it is hard ro quantify the results of our label embedding model numerically, you can see from \cite{fig:l2v_ex} that the resulting vectors after the first stage of model training do make sense from human perspective, in that the labels that describe similar art objext are close in the embedding space.\par
+Our model uses a 100-dimensional embedding size. The similar results with label embeddings were shown in spaces of lower dimension, but it was detrimental to classification results, so we have not experimented with it any further.
+
+\begin{table*}[!t]
+	\begin{center}
+		\begin{tabular}{|c|c|c|c|}
+			\hline
+			\textbf{Label }& tag::lace & tag::food &  culture::geneva \\\hline
+
+\textbf{\shortstack{Closest neighbors\\ with similarity}} &
+
+\shortstack{
+culture::brussels, 0.84\\
+culture::antwerp, 0.82\\
+culture::genoa, 0.81\\
+tag::decorative designs, 0.81\\
+tag::scarves, 0.80\\
+tag::vestments, 0.80\\
+tag::textile fragments, 0.80\\
+culture::abruzzi, 0.80\\
+culture::sicily, 0.78\\
+tag::paisley, 0.78}&
+
+\shortstack{
+tag::servants, 0.91\\
+tag::dining, 0.90\\
+tag::fear, 0.88\\
+tag::bedrooms, 0.88\\
+tag::painting, 0.87\\
+tag::family, 0.87\\
+tag::anger, 0.87\\
+tag::daily life, 0.86\\
+tag::students, 0.86\\
+tag::kitchens, 0.85}
+&
+\shortstack{tag::pocket watches, 0.90\\
+	culture::zurich, 0.90\\
+	tag::watches, 0.89\\
+	culture::amsterdam, 0.82\\
+	culture::swiss, 0.81\\
+	culture::french or swiss, 0.80\\
+	culture::strasbourg, 0.78\\
+	tag::commodes, 0.77\\
+	culture::st. petersburg, 0.77\\
+	culture::spitalfields, 0.76}
+\\
+\hline
+		\end{tabular}
+\end{center}
+\caption{Label embedding examples}
+\label{fig:l2v_ex}
+\end{table*}
+
+\subsection{Image embedding examples}
+Similar to label embeddings, we present examples of the closest neighbors of image embeddings after the second stage of model training. While they don't exactly match the true labels they are semantically close from the authors' perspective.
+\begin{table*}[hb!]
+	\begin{center}
+		\begin{tabular}{|c|c|c|c|}
+			\hline
+			 \textbf{Test images}&	\includegraphics[width=0.25\textwidth]{japan.png} & \includegraphics[width=0.3\textwidth]{hochst.png} & \includegraphics[width=0.25\textwidth]{weapon.png} \\
+			\hline\hline
+			\textbf{True labels}
+			&
+			\shortstack{
+			culture::japan\\
+			tag::women\\
+			tag::writing systems}
+		&
+		\shortstack{\\culture::german\\
+			culture::hochst\\
+			tag::dancers\\
+			tag::dancing\\
+			tag::flowers\\
+			tag::women}
+		&
+		\shortstack{culture::italian\\
+			tag::weapons}
+\\		\hline\textbf{
+		\shortstack{Predicted\\
+			closest label\\ vectors
+			with\\ similarity}}
+			&
+			\shortstack{\\\\
+				culture::japan, 0.55\\
+				tag::actors, 0.46\\
+				tag::women, 0.39\\
+				tag::men, 0.38\\
+				tag::costumes, 0.36\\
+				tag::girls, 0.34\\
+				tag::mice, 0.33\\
+				tag::performance, 0.29\\
+				tag::fans, 0.29\\
+				tag::boys, 0.28			}&
+		\shortstack{
+culture::german, 0.58\\
+tag::sculpture, 0.44\\
+culture::meissen, 0.40\\
+culture::hochst, 0.40\\
+culture::austrian, 0.38\\
+tag::lovers, 0.37\\
+tag::parrots, 0.36\\
+tag::men, 0.36\\
+tag::women, 0.35\\
+culture::fulda, 0.34}
+&		\shortstack{
+tag::weapons, 0.51\\
+culture::italian, 0.46\\
+culture::german, 0.34\\
+tag::swords, 0.30\\
+tag::armors, 0.24\\
+culture::french, 0.24\\
+culture::flemish, 0.22\\
+culture::milan, 0.22\\
+tag::mythical creatures, 0.21\\
+tag::firearms, 0.20}
+		\\
+		\hline
+		\end{tabular}
+	\end{center}
+	\caption{Image embedding examples}
+\end{table*}
+
+\subsection{Training statistics}
+You can see from the training statistics on the figures\label{fig:stat1}, \label{fig:stat2} accuracy is not a very useful measure in this task, it stays close to 1 from the start of the training because most of the examples are negative for most classes. This is why we evaluate our models with F2-score.
+\par We have also experimented with combining the last two stages, but it didn't give satisfactory results, probably because training in this setting requires more subltle hyperparametrs tuning to adjust the contribution of both classification and embedding loss.
+\par Training of all models took approx 5 hours each on a single Tesla P100 GPU.
+\subsection{Evaluation}
+    \begin{minipage}[b]{0.5\hsize}\centering
+    	\begin{tabular}{|m{1cm}|cccc|}
+		\hline
+		\textbf{Model} & \textbf{F2-score} & \textbf{Recall}  & \textbf{Precision} & \textbf{Accuracy} \\ \hline \hline
+		ResNet-18 & 0.4593 & 0.5314& 0.3001 & 0.9950\\ \hline
+		RN-18 + emb. (A) &0.4866 & 0.5655 & 0.3125 &0.9952\\ \hline
+		RN-18 + emb. (B) &\textbf{0.4929} & 0.5799 & 0.3107 &0.9950\\ \hline  \hline
+		ResNet-18, focal loss & 0.4820 & 0.5624& 0.3068& 0.9951\\ \hline
+		RN-18 + emb. (A), focal loss  & 0.5104 & 0.5786& 0.3469 & 0.9955\\ \hline
+		RN-18 + emb. (B), focal loss & \textbf{0.5245} & 0.5844&0.3721 & 0.9955\\ \hline
+	\end{tabular}
+	\captionof{figure}{Model comparison}
+	\label{tab:singlebest}
+\end{minipage}
+\par Using weighted classification has produced suboptimal results, so we do not report them here
+\begin{figure*}
+	\includegraphics[width=\textwidth]{clsss_emb_no_dist_focal.png}
+	\centering
+	\caption{Training statistics of the model A with focal loss}\label{fig:stat1}
+\end{figure*}
+\begin{figure*}
+	\includegraphics[width=\textwidth]{clsss_emb_dist_no_focal.png}
+	\centering
+	\caption{Training statistics of the model B without focal loss}\label{fig:stat2}
+\end{figure*}
+
+\section{Conclusions and Future work}
+In this work, we propose an improvement on a multi-label classifier for datasets with high numbers of classes. Our approach is a simple tweak over a standard model, but shows improvement of ~0.04 F2-score over regular image classifier without label embeddings.
+\par
+Further work would include more experiments with different convolutional networks, as well as experiments in different settings with different hyperparameters. Another approach we would look into would be separating the labels into categories and training different classifiers for each group.\par
+Source code is available at https://github.com/olgasokol/iMetProject
+\FloatBarrier
 
 {\small
 \bibliographystyle{ieee_fullname}
