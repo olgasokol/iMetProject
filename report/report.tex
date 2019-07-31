@@ -7,8 +7,7 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{graphicx}
-
-\graphicspath{ {./} }
+\graphicspath{{./images/}}
 % Include other packages here, before hyperref.
 
 % If you comment hyperref and then uncomment it, you should delete
@@ -33,16 +32,6 @@
 Universit{\"a}t des Saarlandes\\
 Saarbr{\"u}cken, Germany\\
 {\tt\small s8ekarkh,s8olsoko @stud.uni-saarland.de }
-% For a paper whose authors are all at the same institution,
-% omit the following lines up until the closing ``}''.
-% Additional authors and addresses can be added with ``\and'',
-% just like the second author.
-% To save space, use either the email address or home page, not both
-%\and
-%Olha Sokol\\
-%Institution2\\
-%First line of institution2 address\\
-%{\tt\small secondauthor@i2.org}
 }
 
 \maketitle
@@ -50,7 +39,7 @@ Saarbr{\"u}cken, Germany\\
 
 %%%%%%%%% ABSTRACT
 \begin{abstract}
-   People have been collecting art pieces even before our era. Ever since, the amount of art pieces have only been growing. With this increasing growth there is a demand in categorizing and labeling art data. Using manual labor for this purpose can be extremely expensive, therefore an automated solution is needed. Previously, there were some attempts at automated labeling of paintings \cite{Rijksmuseum}, however little research have been made in labeling different types of art, like sculpture, ceramics or applied arts. 
+   People have been collecting art pieces even before our era. Ever since, the amount of art pieces have only been growing. With this increasing growth there is a demand in categorizing and labeling art data. Using manual labor for this purpose can be extremely expensive, therefore an automated solution is needed. Previously, there were some attempts at automated labeling of paintings \cite{Rijks}, however little research have been made in labeling different types of art, like sculpture, ceramics or applied arts. 
    In this project we attempt to perform multi-label classification task on iMet dataset. We utilize label embeddings to improve accuracy of fine-tuned ResNet18 network. Futhermore we use t-SNE algorithm to visualize learned features on artistic data. 
 
 \end{abstract}
@@ -69,20 +58,23 @@ Art has always been a part of human's life. There are more than 55000 museums in
   \label{fig:imet_sample}
 \end{figure}
 We use iMet dataset from iMet Collection 2019 - FGVC6 challenge \cite{imet}. It is a collection of more than 109k images of different art pieces collected at Metropolitan Museum of Art in New York, also known as The Met.
-Each data sample contains one image and at least one attribute label from a label set of 1103 attributes, as can bee seen on Fig \ref{fig:imet_sample}. The dimension of each image is normalized such that the shorter dimension is 300 pixels. Provided annotations are considered somewhat noisy, as they were provided by single worker without verification step. Annotations are devided into 2 categories, culture and tags, tags being related to what is “seen” or what is infered as the object’s “utility.”	\\
+Each data sample contains one image and at least one attribute label from a label set of 1103 attributes, as can bee seen on Fig \ref{fig:imet_sample}. The dimension of each image is normalized such that the shorter dimension is 300 pixels. Provided annotations are considered somewhat noisy, as they were provided by single worker without verification step. Annotations are devided into 2 categories, culture and tags, tags being related to what is “seen” or what is infered as the object’s “utility.”	
 
+\subsection{Problem statement}
 \begin{figure}[h!]
   \includegraphics[width=0.5\textwidth]{labels_frequency}
   \caption{Top-30 labels by frequency}
   \label{fig:top30}
 \end{figure}
-As we can see from Fig. \ref{fig:top30}, labels for this dataset are very unbalanced, making training conventional CNNs very challenging.
 
+
+As an input we use single image from iMet dataset, passing it through a neural net we want to receive a set of labels.
+As we can see from Fig. \ref{fig:top30}, labels for this dataset are very unbalanced, making training conventional CNNs very challenging. To adress this issue we use labels embeddings to encourage labels close in embedding space to appear together more often.
 
 \subsection{Related work}
 
-There's been a lot of work in classification paintings by author 
-
+There's been a lot of work in classification paintings by author, learning their artistic style  \cite{paint_class}, \cite{rec_style}, \cite{learned_style}, \cite{draw_style}, \cite{la_style}, \cite{la_style_2}, and style transfer \cite{johnson_style_transf}, \cite{huang_style_transf}, \cite{ulyaniv_stylized_img}, \cite{jie_style_transf}. However, little has been made in classification of art pieces that are not paintings. 
+T. Balakrishan et al. in \cite{Rijks} tried to classify paintings of Rijksmuseum by their respective authors. To adress imbalance problem they reduces their authors set to include only top 10 artist regarding amount of paintings they produced. Then they used pretrained ResNet-18 and fine-tuned its last layer. However with such architercture they encountered accuracy drop by 0.3\% when increasing number of classes from 10 to 20.
 
 
 %-------------------------------------------------------------------------
@@ -92,7 +84,7 @@ There's been a lot of work in classification paintings by author
 \bibliography{egbib}
 \begin{thebibliography}{9}
 
-\bibitem{Rijksmuseum} 
+\bibitem{Rijks} 
 Tara Balakrishan, Sarah Rosston, Emily Tang
 \textit{Using CNN to Classify and Understand Artists from the Rijksmuseum}. 
 2017.
@@ -106,7 +98,6 @@ Tara Balakrishan, Sarah Rosston, Emily Tang
 Wei-Ta Chu, Yi-Ling Wu.
 \textit{Deep Correlation Features for Image Style Classification.}
 ACM Multimedia 2016.
-
 
 \bibitem{rec_style}
 Sergey Karayev, Aaron Hertzmann, Holger Winnemöller, Aseem Agarwala, Trevor Darrell.
@@ -128,52 +119,32 @@ Samet Hicsonmez, Nermin Samet, Fadime Sener, Pinar Duygulu.
 \textit{DRAW: Deep networks for Recognizing styles of Artists Who illustrate children's books.}
 Proceedings of ICMR ’17, June 6–9, 2017, Bucharest, Romania.
 
-
-]    1, 3
-
-\bibitem{}
+\bibitem{la_style}
 L. A. Gatys, A. S. Ecker, and M. Bethge.
 \textit{A neural algorithm of artistic style.}
 arXiv preprint arXiv:1508.06576, 2015.
 
-
-
-\bibitem{}
+\bibitem{la_style_2}
 L. A. Gatys, A. S. Ecker, and M. Bethge.
-\textit{Image
-style transfer using convolutional neural networks.}
-  In
-CVPR, 2016.
+\textit{Image style transfer using convolutional neural networks.}
+In CVPR, 2016.
 
-
-
-\bibitem{}
+\bibitem{johnson_style_transf}
 J. Johnson, A. Alahi, and L. Fei-Fei.
-\textit{ Perceptual losses
-for real-time style transfer and super-resolution.}
- In
-ECCV, 2016.
+\textit{ Perceptual losses for real-time style transfer and super-resolution.}
+In ECCV, 2016.
 
-  
-
-\bibitem{}
+\bibitem{huang_style_transf}
 X. Huang and S. J. Belongie.
-\textit{Arbitrary style transfer
-in real-time with adaptive instance normalization.}
-In
-ICCV, 2017.
+\textit{Arbitrary style transfer in real-time with adaptive instance normalization.}
+In ICCV, 2017.
 
-
-\bibitem{}
+\bibitem{ulyaniv_stylized_img}
 D. Ulyanov, V. Lebedev, A. Vedaldi, and V. S. Lempitsky.
-\textit{Texture networks: feed-forward synthesis of
-textures and stylized images.}
+\textit{Texture networks: feed-forward synthesis of textures and stylized images.}
 In ICML, 2016.
 
-
-
-
-\bibitem{}
+\bibitem{jie_style_transf}
 Jie An, Haoyi Xiong, Jiebo Luo, Jun Huan, Jinwen Ma.
 \textit{Fast Universal Style Transfer for Artistic and Photorealistic Rendering}
 arXiv preprint arXiv:1907.03118v1, 2019
